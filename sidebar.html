@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {margin: 0; padding: 0}
+      .flex {display: flex; flex-direction: column; height: 100vh;}
+      .header {margin: 5% 0 0 5%; font-size: 20px; font-weight: bold;}
+      .scrollbar {width: 90%; flex-grow: 3; margin: 5%; background: #F5F5F5; overflow-y: scroll;}
+      .ss-item {font-weight: bold;}
+      #addBtn {margin-left: 5%; float: left; width: 43%; height: 30px; opacity: 0.2; cursor: unset;}
+      #clearBtn {margin-right: 5%; float: right; width: 42%; height: 30px; opacity: 0.2; cursor: unset;}
+      #startBtn {margin: 5%; width: 90%; height: 45px; font-size: 16px; font-weight: bold; opacity: 0.2; cursor: unset;}
+      #shell {position: absolute; width: 100%; height: 100%; background-color: #aeaeae; opacity: 0.9;}
+      #progress-box {margin: 100% 20px; border-radius: 5px; overflow: hidden; background-color: #7d7d7d;}
+      #progress {background-color: #4598ee; width: 0%; height: 30px;}
+      #box-text {position: absolute; display: block; margin-top: -24px; font-size: 18px;}
+      .start-over {width: 90%; flex-grow: 3; margin: 5%; position: absolute; bottom:0; font-size: 18px;}
+      #overBtn {margin-top: 5%; width: 100%; height: 45px; font-size: 16px; font-weight: bold; cursor: pointer;}
+    </style>
+  </head>
+  <body>
+    <div class="flex">
+      <div class="header">Sheets:</div>
+      <div class="scrollbar"><div id="itemsScrollbarDiv"></div></div>
+      <div class="buttons">
+        <button id="addBtn" onclick="add();">Add spreadsheet</button>
+        <button id="clearBtn" onclick="clearAll();">Clear list</button>
+        <button id="startBtn" onclick="start();">Consolidate sheets</button>
+      </div>
+    </div>
+  
+  <script>
+    'use strict';
+
+    /*
+    [{
+      ssI: spreadshit id,
+      ssN: spreadshit name,
+      siArr: [sheets id's for consolidation arr],
+      snArr: [sheets name's for consolidation arr],
+      inArr: [icluding for consolidation sheets arr],
+      cnArr: [ceils for consolidation number arr]
+    }]
+    */
+    let consolidateArr = [];
+    let includes = 0;
+
+    let startTime, count, step, objC, iC, progress, progressSize;
+
+    let itemsListDiv = document.getElementById("itemsScrollbarDiv");
+
+    const addBtn = document.getElementById("addBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const startBtn = document.getElementById("startBtn");
+
+    window.onload = function () {
+      google.script.run.withSuccessHandler(addItems).getConsolidateArr();
+    }
+
+    function addItems(items) {
+      consolidateArr = items
+      for (let obj of consolidateArr) {
+        itemsListDiv.innerHTML += '<div class="ss-item">' + obj.ssN + '</div>';
+        for (let i = 0; i < obj.siArr.length; i++) {
+          let checkIs = (obj.inArr[i] == 1) ? 'checked' : '';
+          itemsListDiv.innerHTML += `<div class="s-item"><input type="checkbox" ${checkIs}
+                                    onchange="checkItem(this,'${obj.ssI}','${i}');">${obj.snArr[i]}</div>`;
+          includes++;
+        }
+        itemsListDiv.innerHTML += '<br>';
+      }
+      activateBtnAdd();
+      if (consolidateArr.length > 0) activateBtnClear();
+      if (includes > 1) activateBtnStart();
+    }
+
+    function checkItem(e, ssId, i) {
+      let ind = consolidateArr.findIndex(obj => obj.ssI === ssId);
+      if (e.checked) {
+        consolidateArr[ind].inArr[i] = 1;
+        includes++;
+      }
+      else {
+        consolidateArr[ind].inArr[i] = 0;
+        includes--;
+      }
+      if (consolidateArr.length > 0) activateBtnClear();
+      if (includes > 1) activateBtnStart();
+      else deactivateBtnStart();
+
+      console.log(consolidateArr);
+    }
+
+    function activateBtnAdd() {
+      addBtn.style.opacity = 1;
+      addBtn.style.cursor = 'pointer';
+    }
+    function activateBtnClear() {
+      clearBtn.style.opacity = 1;
+      clearBtn.cursor = 'pointer';
+    }
+    function deactivateBtnClear() {
+      clearBtn.style.opacity = 0.2;
+      clearBtn.cursor = 'unset';
+    }
+    function activateBtnStart() {
+      startBtn.style.opacity = 1;
+      startBtn.cursor = 'pointer';
+    }
+    function deactivateBtnStart() {
+      startBtn.style.opacity = 0.2;
+      startBtn.cursor = 'unset';
+    }
+
+    function start() {
+      if (includes > 1) {
+        let flexDiv = document.getElementsByClassName('flex')[0];
+        let shell = '<div id="shell"><div id="progress-box"><div id="progress"><div id="box-text">praparing data...</div></div></div></div>';
+        flexDiv.innerHTML += shell;
+        google.script.run.withSuccessHandler(startProgress).startConsolidation();
+      } else {
+        google.script.run.showMessage('You must select at least two sheets for consolidation');
+      }
+    }
+    function startProgress() {
+      startTime = new Date();
+      let size = 0;
+      let object = null;
+      objC = iC = count = progress = progressSize = 0;
+      for (let obj = objC; obj < consolidateArr.length; obj++) {
+        for (let i = iC; i < consolidateArr[obj].inArr.length; i++) {
+          if (consolidateArr[obj].inArr[i]) {
+            size += consolidateArr[obj].cnArr[i];
+            count ++;
+          }
+        }
+      }
+      step = 100 / size;
+      document.getElementById("box-text").innerHTML = "in progerss...";
+      onProgress(0);
+    }
+    function onProgress() {
+      let object;
+      let loadLine = document.getElementById("progress").style.width;
+      if (count === 0) google.script.run.withSuccessHandler(endProgrss).endConsolidation();
+      else {
+        count --;
+        loop:
+        for (let obj = objC; obj < consolidateArr.length; obj++) {
+          for (let i = iC; i < consolidateArr[obj].inArr.length; i++) {
+            if (consolidateArr[obj].inArr[i]) {
+              object = {ssId: consolidateArr[obj].ssI, sId: consolidateArr[obj].siArr[i]};
+              objC = obj;
+              iC = i+1;
+              progressSize += step * consolidateArr[obj].cnArr[i];
+              setTimeout(progressAdd, 60);
+              google.script.run.withSuccessHandler(onProgress).consolidation(object);
+              break loop;
+            }
+          }
+        }
+      }
+    }
+    function progressAdd() {
+      if (progress < progressSize) {
+        progress += 1;
+        document.getElementById("progress").style.width = progress + '%';
+        setTimeout(progressAdd, 60);
+      }
+    }
+    function endProgrss(url) {
+      progress = progressSize;
+      // document.getElementById("progress").style.width = '100%';
+      document.getElementById('shell').style.backgroundColor = '#ffffff';
+      document.getElementById('shell').style.opacity = 1;
+      document.getElementById('shell').innerHTML = '<div class="start-over">sheets have been combined and put <br> in'
+        +' <a target="_blank" href ="' + 'url' + '">consolidated sheet</a>.<br><button id="overBtn" onclick="startOver();">Start over</button></div>';
+      google.script.run.showMessage('All done! \n Just in ' + (new Date - startTime)/1000 + 'seconds');
+    }
+
+    function startOver () {
+      google.script.host.close();
+    }
+
+    function add() {
+      google.script.run.showModal(consolidateArr);
+    }
+
+    function clearAll() {
+      if (clearBtn.cursor === 'pointer') {
+        itemsListDiv.innerHTML = '';
+        deactivateBtnClear();
+        deactivateBtnStart();
+        consolidateArr.length = 0;
+        includes = 0;
+        google.script.run.clearConsolidateArr();
+      }
+    }
+
+  </script>
+
+  </body>
+</html>
